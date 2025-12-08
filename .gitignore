@@ -1,0 +1,84 @@
+# -------------------------------
+# PYTHON / FASTAPI BACKEND
+# -------------------------------
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# SQLite (in case used)
+*.db
+
+# FastAPI cache
+.pytest_cache/
+.python-version
+
+
+# Local settings
+.env
+.env.*
+*.env
+
+
+# -------------------------------
+# DATABASE / POSTGRES
+# -------------------------------
+# Prevent local DB volumes from being committed
+postgres-data/
+db-data/
+data/
+pgdata/
+
+
+# -------------------------------
+# DOCKER
+# -------------------------------
+
+# Docker build artifacts
+*.pid
+*.log
+docker-compose.override.yml
+docker-compose.local.yml
+
+# -------------------------------
+# EDITOR / OS FILES
+# -------------------------------
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# Windows / Mac System files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+# -------------------------------
+# CACHE / TEMP / MISC
+# -------------------------------
+*.tmp
+*.temp
+tmp/
+cache/
+frontend/.turbo/
+.pnpm-store/
