@@ -1,0 +1,17 @@
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --accent: #58a6ff;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+input[type="file"] {
+  margin-right: 10px;
+  color: var(--text);
+}

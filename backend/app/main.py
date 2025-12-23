@@ -1,7 +1,11 @@
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 import os
 import shutil
+from pathlib import Path
 
 from . import crud
 from . import models
@@ -11,6 +15,20 @@ from .database import engine, get_db, Base
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="File Directory API")
+
+# Allow CORS for the frontend during development (adjust origins for production)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount frontend static files (serve the `frontend` folder from workspace root)
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
+if os.path.isdir(FRONTEND_DIR):
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
 STORAGE_DIR = os.path.join(os.path.dirname(__file__), "storage")
 os.makedirs(STORAGE_DIR, exist_ok=True)
@@ -57,3 +75,13 @@ def delete_file(file_id: int, db: Session = Depends(get_db)):
     except Exception:
         pass
     return {"deleted": True}
+
+# Serve file download
+@app.get("/files/download/{file_id}")
+def download_file(file_id: int, db: Session = Depends(get_db)):
+    f = crud.get_file(db, file_id)
+    if not f:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not os.path.exists(f.path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    return FileResponse(f.path, media_type='application/octet-stream', filename=f.filename)

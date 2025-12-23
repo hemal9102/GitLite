@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Files</title>
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/dark.css" />
+</head>
+<body>
+  <header class="navbar">
+    <h1>Files</h1>
+    <a href="index.html" class="link">← Dashboard</a>
+  </header>
+
+  <main class="container">
+
+    <!-- Upload -->
+    <div class="card">
+      <h2>Upload File</h2>
+      <input type="file" id="fileInput" />
+      <button class="btn" id="uploadBtn">Upload</button>
+    </div>
+
+    <!-- File list -->
+    <div class="card">
+      <h2>File List</h2>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Filename</th>
+            <th>Type</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="fileTableBody">
+          <!-- JS injects rows -->
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/files.js"></script>
+</body>
+</html>

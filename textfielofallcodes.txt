@@ -1,0 +1,369 @@
+
+frontend/index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>FastAPI File Manager</title>
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/dark.css" />
+</head>
+<body>
+  <header class="navbar">
+    <h1>FastAPI File Manager</h1>
+  </header>
+
+  <main class="container">
+    <div class="card">
+      <h2>Welcome 👋</h2>
+      <p>A simple GitHub-like UI for managing files via FastAPI.</p>
+      <a href="files.html" class="btn">Open File Manager</a>
+    </div>
+  </main>
+</body>
+</html>
+
+frontend/files.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Files</title>
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/dark.css" />
+</head>
+<body>
+  <header class="navbar">
+    <h1>Files</h1>
+    <a href="index.html" class="link">← Dashboard</a>
+  </header>
+
+  <main class="container">
+
+    <!-- Upload -->
+    <div class="card">
+      <h2>Upload File</h2>
+      <input type="file" id="fileInput" />
+      <button class="btn" id="uploadBtn">Upload</button>
+    </div>
+
+    <!-- File list -->
+    <div class="card">
+      <h2>File List</h2>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Filename</th>
+            <th>Type</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="fileTableBody">
+          <!-- JS injects rows -->
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/files.js"></script>
+</body>
+</html>
+
+
+frontend/file.js
+const tableBody = document.getElementById("fileTableBody");
+const uploadBtn = document.getElementById("uploadBtn");
+const fileInput = document.getElementById("fileInput");
+
+// small set of mock commit-like metadata to make the UI look GitHub-ish
+const mockCommits = [
+  { message: "Initial upload", author: "you", date: "3 weeks ago" },
+  { message: "Update content", author: "you", date: "2 weeks ago" },
+  { message: "Rename file", author: "you", date: "last month" },
+];
+
+async function loadFiles() {
+  tableBody.innerHTML = "";
+  const files = await fetchFiles();
+
+  files.forEach((file, idx) => {
+    const tr = document.createElement("tr");
+    const commit = mockCommits[idx % mockCommits.length];
+
+    tr.innerHTML = `
+      <td>${file.id}</td>
+      <td>
+        <span class="file-icon">${getFileIcon(file.filename)}</span>
+        <a href="#" onclick="handleDownload(${file.id});return false;">${
+      file.filename || "unknown"
+    }</a>
+      </td>
+      <td>${file.content_type || "-"}</td>
+      <td>
+        <button class="btn" onclick="handleDownload(${file.id})">Download</button>
+        <button class="btn" onclick="handleDelete(${file.id})">Delete</button>
+      </td>
+    `;
+
+    tableBody.appendChild(tr);
+  });
+}
+
+function getFileIcon(filename) {
+  if (!filename) return "📄";
+  const ext = filename.split(".").pop().toLowerCase();
+  switch (ext) {
+    case "png":
+    case "jpg":
+    case "jpeg":
+    case "gif":
+      return "🖼️";
+    case "pdf":
+      return "📄";
+    case "py":
+      return "🐍";
+    case "js":
+      return "💻";
+    case "css":
+      return "🎨";
+    case "md":
+      return "📘";
+    case "zip":
+    case "rar":
+      return "📦";
+    default:
+      return "📄";
+  }
+}
+
+async function handleDelete(id) {
+  if (!confirm("Delete this file?")) return;
+  await deleteFile(id);
+  loadFiles();
+}
+
+async function handleDownload(id) {
+  try {
+    await downloadFile(id);
+  } catch (err) {
+    alert("Download failed: " + (err.message || err));
+  }
+}
+
+uploadBtn?.addEventListener("click", async () => {
+  if (!fileInput.files.length) {
+    alert("Select a file first");
+    return;
+  }
+
+  await uploadFile(fileInput.files[0]);
+  fileInput.value = "";
+  loadFiles();
+});
+
+loadFiles();
+
+backend/.env
+
+DATABASE_URL=postgresql+psycopg2://fastapi:hk9102@db:5432/filedb
+POSTGRES_USER=fastapi
+POSTGRES_PASSWORD=hk9102
+DB_PORT=5432
+POSTGRES_DB=filedb
+WEB_PORT=8000
+
+backend/app/main.py
+from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+import os
+import shutil
+from pathlib import Path
+
+from . import crud
+from . import models
+from .database import engine, get_db, Base
+
+# create tables (for simple demo; for real apps use Alembic)
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="File Directory API")
+
+# Allow CORS for the frontend during development (adjust origins for production)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount frontend static files (serve the `frontend` folder from workspace root)
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
+if os.path.isdir(FRONTEND_DIR):
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+
+STORAGE_DIR = os.path.join(os.path.dirname(__file__), "storage")
+os.makedirs(STORAGE_DIR, exist_ok=True)
+
+@app.post("/files/", status_code=201)
+async def upload_file(uploaded_file: UploadFile = File(...), db: Session = Depends(get_db)):
+    # save to disk
+    file_path = os.path.join(STORAGE_DIR, uploaded_file.filename)
+    # ensure unique filename (simple approach)
+    if os.path.exists(file_path):
+        base, ext = os.path.splitext(uploaded_file.filename)
+        i = 1
+        while os.path.exists(os.path.join(STORAGE_DIR, f"{base}_{i}{ext}")):
+            i += 1
+        file_path = os.path.join(STORAGE_DIR, f"{base}_{i}{ext}")
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(uploaded_file.file, buffer)
+
+    size = os.path.getsize(file_path)
+    record = crud.create_file_meta(db, filename=os.path.basename(file_path), path=file_path, size=size, content_type=uploaded_file.content_type)
+    return {"id": record.id, "filename": record.filename}
+
+@app.get("/files/")
+def list_files(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+    return crud.list_files(db, skip=skip, limit=limit)
+
+@app.get("/files/{file_id}")
+def get_file_meta(file_id: int, db: Session = Depends(get_db)):
+    f = crud.get_file(db, file_id)
+    if not f:
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"id": f.id, "filename": f.filename, "size": f.size, "path": f.path, "created_at": f.created_at}
+
+@app.delete("/files/{file_id}")
+def delete_file(file_id: int, db: Session = Depends(get_db)):
+    f = crud.soft_delete_file(db, file_id)
+    if not f:
+        raise HTTPException(status_code=404, detail="File not found")
+    # optionally delete file from disk:
+    try:
+        if os.path.exists(f.path):
+            os.remove(f.path)
+    except Exception:
+        pass
+    return {"deleted": True}
+
+# Serve file download
+@app.get("/files/download/{file_id}")
+def download_file(file_id: int, db: Session = Depends(get_db)):
+    f = crud.get_file(db, file_id)
+    if not f:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not os.path.exists(f.path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    return FileResponse(f.path, media_type='application/octet-stream', filename=f.filename)
+
+backend/app/create_tables.py
+
+# backend/create_tables.py
+from .models import *          # imports model classes
+from .database import Base, engine
+
+if __name__ == "__main__":
+    print("Creating tables...")
+    Base.metadata.create_all(bind=engine)
+    print("Done!")
+
+backend/app/database.py
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+import os
+
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT}/${POSTGRES_DB}")
+
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base = declarative_base()
+
+# Dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+backend/app/models.py
+from sqlalchemy import Column, Integer, String, DateTime, func, Boolean
+from .database import Base
+
+class FileMeta(Base):
+    __tablename__ = "files"
+
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String, nullable=False)
+    path = Column(String, nullable=False, unique=True)  # local path or S3 key
+    size = Column(Integer, nullable=False)
+    content_type = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    is_deleted = Column(Boolean, default=False)
+
+backend/docker-compose.yml
+
+name: backend
+services:
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port ${WEB_PORT} --reload
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${WEB_PORT}:${WEB_PORT}"
+    volumes:
+      - ./app:/app/app
+      - ./app/storage:/app/app/storage
+
+volumes:
+  db_data:
+
+backend/Dockerfile
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# system deps for psycopg2 and build
+RUN apt-get update && \
+    apt-get install -y build-essential libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
