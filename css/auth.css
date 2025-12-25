@@ -1,0 +1,4 @@
+body { font-family: Arial, sans-serif; background:#0d1117; color:#c9d1d9; display:flex; align-items:center; justify-content:center; height:100vh; }
+input { display:block; margin:8px 0; padding:8px; width:260px; background:#0b1220; border:1px solid #30363d; color:#c9d1d9; }
+button { padding:8px 12px; background:#238636; color:white; border:none; border-radius:6px; cursor:pointer; }
+h2 { margin-bottom:12px; }
