@@ -12,4 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+ENV WEB_PORT=8080
+ENV START_CMD="uvicorn app.main:app --host 0.0.0.0 --port ${WEB_PORT}"
+CMD ["python", "wait_for_db.py"]

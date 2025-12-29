@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from .database import get_db
 from . import crud
 from . import security
+from .schemas import LoginRequest, SignupRequest
 
 router = APIRouter()
 
@@ -22,15 +23,16 @@ def create_access_token(data: dict):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-# Signup (existing)
+# Signup (JSON body)
 @router.post("/auth/signup")
-def signup(email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+def signup(payload: SignupRequest, db: Session = Depends(get_db)):
     from .models import User
+    email = payload.email
+    password = payload.password
     if db.query(User).filter(User.email == email).first():
         raise HTTPException(status_code=400, detail="Email already exists")
 
     hashed = security.hash_password(password)
-    # create user record
     username = email.split("@")[0]
     user = crud.create_user(db, username=username, email=email)
     user.hashed_password = hashed
@@ -38,10 +40,12 @@ def signup(email: str = Form(...), password: str = Form(...), db: Session = Depe
     db.refresh(user)
     return {"message": "User created", "id": user.id}
 
-# Login
+# Login (JSON body)
 @router.post("/auth/login")
-def login(email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+def login(payload: LoginRequest, db: Session = Depends(get_db)):
     from .models import User
+    email = payload.email
+    password = payload.password
     user = db.query(User).filter(User.email == email).first()
     if not user or not security.verify_password(password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
