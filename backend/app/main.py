@@ -96,23 +96,45 @@ STORAGE_DIR = os.path.join(os.path.dirname(__file__), "storage")
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
 @app.post("/files/", status_code=201)
-async def upload_file(file: UploadFile = File(...), user=Depends(get_current_user), db: Session = Depends(get_db)):
-    # save to disk
-    file_path = os.path.join(STORAGE_DIR, file.filename)
-    # ensure unique filename (simple approach)
-    if os.path.exists(file_path):
-        base, ext = os.path.splitext(file.filename)
-        i = 1
-        while os.path.exists(os.path.join(STORAGE_DIR, f"{base}_{i}{ext}")):
-            i += 1
-        file_path = os.path.join(STORAGE_DIR, f"{base}_{i}{ext}")
+async def upload_file(
+    file: UploadFile = File(...),
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        # ensure storage dir exists (safe on both local and Docker)
+        os.makedirs(STORAGE_DIR, exist_ok=True)
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        # sanitize filename and ensure uniqueness
+        filename = (file.filename or "upload").replace("/", "_")
+        file_path = os.path.join(STORAGE_DIR, filename)
+        if os.path.exists(file_path):
+            base, ext = os.path.splitext(filename)
+            i = 1
+            while os.path.exists(os.path.join(STORAGE_DIR, f"{base}_{i}{ext}")):
+                i += 1
+            file_path = os.path.join(STORAGE_DIR, f"{base}_{i}{ext}")
 
-    size = os.path.getsize(file_path)
-    record = crud.create_file_meta(db, filename=os.path.basename(file_path), path=file_path, size=size, content_type=file.content_type, owner_id=user.id)
-    return {"id": record.id, "filename": record.filename, "owner_id": record.owner_id}
+        # write file safely
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # create DB record
+        record = crud.create_file_meta(
+            db,
+            filename=os.path.basename(file_path),
+            path=file_path,
+            size=os.path.getsize(file_path),
+            content_type=getattr(file, "content_type", None),
+            owner_id=getattr(user, "id", None)
+        )
+
+        return {"id": record.id, "filename": record.filename, "path": record.path}
+    except Exception as e:
+        # log full traceback to container logs and return 500 with message
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
 
 @app.get("/files/")
 def list_files(user=Depends(get_current_user), db: Session = Depends(get_db)):
