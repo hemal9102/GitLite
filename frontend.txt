@@ -1,0 +1,365 @@
+--- auth.css ---
+/* css/auth.css */
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  background: #0d1117;
+  color: #c9d1d9;
+  margin: 0;
+  padding: 0;
+}
+.container {
+  max-width: 720px;
+  margin: 48px auto;
+  padding: 20px;
+}
+.card {
+  background: #0b1220;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 6px 18px rgba(2,6,23,0.6);
+}
+input[type="email"], input[type="password"], input[type="text"] {
+  width: 100%;
+  padding: 10px;
+  margin: 8px 0;
+  border-radius: 6px;
+  border: 1px solid #222;
+  background: #02040a;
+  color: #c9d1d9;
+}
+.btn {
+  background: #238636;
+  color: white;
+  border: none;
+  padding: 10px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.btn:hover { opacity: .95; }
+
+--- dark.css ---
+/* css/dark.css (minimal) */
+body { background: #0d1117; color: #c9d1d9; }
+.navbar { background:#0b1220; border-bottom:1px solid #1f6feb; }
+.link { color:#58a6ff; text-decoration:none; }
+
+--- main.css ---
+/* css/main.css (minimal) */
+.navbar {
+  display:flex;
+  align-items:center;
+  padding:12px 20px;
+}
+.navbar h1 { margin:0; color:#fff; }
+.container { max-width:1000px; margin:24px auto; padding:16px; }
+.table { width:100%; border-collapse:collapse; }
+.table th, .table td { padding:10px; border-bottom:1px solid #272727; color:#c9d1d9; }
+.card { background:#0b1220; padding:16px; border-radius:8px; margin-bottom:12px; }
+
+--- js/config.js ---
+/* filepath: h:\GitLite\js\config.js */
+let API_BASE;
+if (window.location.hostname === '127.0.0.1' && window.location.port === '5500') {
+  API_BASE = 'http://127.0.0.1:8080';
+} else if (window.location.hostname.includes('github.io')) {
+  API_BASE = 'https://gitlite-uicn.onrender.com';
+} else {
+  API_BASE = window.location.origin || 'http://localhost:8080';
+}
+window.API_BASE = API_BASE;
+// compatibility note: do not export as ES module so this file can be
+// loaded with a plain <script> tag. Use window.API_BASE from other scripts.
+
+--- js/auth.js ---
+/* filepath: h:\GitLite\js\auth.js */
+async function signup(email, password) {
+  const res = await fetch(`${window.API_BASE}/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Signup failed");
+  alert("Signup successful. Please login.");
+  window.location.href = "login.html";
+}
+
+async function login(email, password) {
+  const res = await fetch(`${window.API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Login failed");
+  localStorage.setItem("token", data.access_token);
+  window.location.href = "files.html";
+}
+
+function logout() {
+  localStorage.removeItem("token");
+  window.location.href = "login.html";
+}
+
+--- js/guard.js ---
+/* filepath: h:\GitLite\js\guard.js */
+function requireAuth() {
+  const token = localStorage.getItem("token");
+  if (!token) {
+    window.location.href = "login.html";
+  }
+}
+function authHeaders() {
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+--- js/api.js ---
+/* filepath: h:\GitLite\js\api.js */
+async function fetchFiles() {
+  const res = await fetch(`${window.API_BASE}/files/`, {
+    headers: { ...authHeaders() }
+  });
+  if (res.status === 401) { logout(); throw new Error("Unauthorized"); }
+  if (!res.ok) {
+    const txt = await res.text().catch(()=>null);
+    throw new Error(`Fetch files failed: ${res.status} ${txt||''}`);
+  }
+  return res.json();
+}
+
+async function uploadFile(file) {
+  const formData = new FormData();
+  // backend expects field name "file"
+  formData.append("file", file);
+
+  const res = await fetch(`${window.API_BASE}/files/`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+    body: formData,
+  });
+
+  if (res.status === 401) { logout(); throw new Error("Unauthorized"); }
+  if (!res.ok) {
+    const txt = await res.text().catch(()=>null);
+    throw new Error(`Upload failed: ${res.status} ${txt||''}`);
+  }
+  return res.json();
+}
+
+async function deleteFile(id) {
+  const res = await fetch(`${window.API_BASE}/files/${id}`, {
+    method: "DELETE",
+    headers: { ...authHeaders() },
+  });
+  if (res.status === 401) { logout(); throw new Error("Unauthorized"); }
+  if (!res.ok) {
+    const txt = await res.text().catch(()=>null);
+    throw new Error(`Delete failed: ${res.status} ${txt||''}`);
+  }
+  return res.json();
+}
+
+--- js/files.js ---
+/* filepath: h:\GitLite\js\files.js */
+document.addEventListener("DOMContentLoaded", function initFilesPage() {
+  const tableBody = document.getElementById("fileTableBody");
+  const uploadBtn = document.getElementById("uploadBtn");
+  const fileInput = document.getElementById("fileInput");
+
+  async function loadFiles() {
+    if (!tableBody) return;
+    tableBody.innerHTML = "";
+    try {
+      const files = await fetchFiles();
+      if (!Array.isArray(files)) {
+        console.error("Unexpected files response:", files);
+        tableBody.innerHTML = "<tr><td colspan='3'>No files</td></tr>";
+        return;
+      }
+      files.forEach(file => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${file.id}</td>
+          <td><a href="#" onclick="handleDownload(${file.id});return false;">${file.filename || 'unknown'}</a></td>
+          <td>
+            <button onclick="handleDelete(${file.id})" class="btn">Delete</button>
+          </td>
+        `;
+        tableBody.appendChild(tr);
+      });
+    } catch (err) {
+      console.error(err);
+      tableBody.innerHTML = `<tr><td colspan="3">Error: ${err.message}</td></tr>`;
+    }
+  }
+
+  window.handleDelete = async function handleDelete(id) {
+    if (!confirm("Delete this file?")) return;
+    await deleteFile(id);
+    loadFiles();
+  };
+
+  window.handleDownload = function handleDownload(id) {
+    // simple redirect to download endpoint
+    window.location.href = `${window.API_BASE}/files/download/${id}`;
+  };
+
+  uploadBtn?.addEventListener("click", async () => {
+    if (!fileInput?.files?.length) {
+      alert("Select a file first");
+      return;
+    }
+    try {
+      await uploadFile(fileInput.files[0]);
+      fileInput.value = "";
+      loadFiles();
+    } catch (err) {
+      alert("Upload error: " + err.message);
+    }
+  });
+
+  loadFiles();
+});
+
+--- files.html ---
+<!-- filepath: h:\GitLite\files.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Files</title>
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/dark.css" />
+</head>
+<body>
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/guard.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/files.js"></script>
+
+  <script> requireAuth(); </script>
+
+  <header class="navbar">
+    <h1>Files</h1>
+    <a href="index.html" class="link">← Dashboard</a>
+    <button onclick="logout()" style="margin-left:auto;">Logout</button>
+  </header>
+
+  <main class="container">
+    <div class="card">
+      <h2>Upload File</h2>
+      <input type="file" id="fileInput" />
+      <button class="btn" id="uploadBtn">Upload</button>
+    </div>
+
+    <div class="card">
+      <h2>File List</h2>
+      <table class="table">
+        <thead>
+          <tr><th>ID</th><th>Filename</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="fileTableBody"></tbody>
+      </table>
+    </div>
+  </main>
+</body>
+</html>
+
+--- index.html ---
+<!-- filepath: h:\GitLite\index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>FastAPI File Manager</title>
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/dark.css" />
+</head>
+<body>
+  <header class="navbar">
+    <h1>FastAPI File Manager</h1>
+    <nav style="margin-left:auto">
+      <a class="btn" href="login.html">Login</a>
+      <a class="btn" href="signup.html" style="margin-left:8px">Signup</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div class="card">
+      <h2>Welcome 👋</h2>
+      <p>A simple GitHub-like UI for managing files via FastAPI.</p>
+      <a href="login.html" class="btn">Open File Manager</a>
+    </div>
+  </main>
+</body>
+</html>
+
+--- login.html ---
+<!-- filepath: h:\GitLite\login.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Login</title>
+  <link rel="stylesheet" href="css/auth.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h2>Login</h2>
+      <input id="email" type="email" placeholder="Email" />
+      <input id="password" type="password" placeholder="Password" />
+      <button class="btn" onclick="handleLogin()">Login</button>
+      <p>No account? <a href="signup.html">Signup</a></p>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    function handleLogin() {
+      login(
+        document.getElementById("email").value,
+        document.getElementById("password").value
+      ).catch(e => alert(e.message));
+    }
+  </script>
+</body>
+</html>
+
+--- signup.html ---
+<!-- filepath: h:\GitLite\signup.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Signup</title>
+  <link rel="stylesheet" href="css/auth.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h2>Signup</h2>
+      <input id="email" type="email" placeholder="Email" />
+      <input id="password" type="password" placeholder="Password" />
+      <button class="btn" onclick="handleSignup()">Create Account</button>
+      <p>Already have an account? <a href="login.html">Login</a></p>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    function handleSignup() {
+      signup(
+        document.getElementById("email").value,
+        document.getElementById("password").value
+      ).catch(e => alert(e.message));
+    }
+  </script>
+</body>
+</html>
+
+--- end of frontend.txt

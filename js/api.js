@@ -8,15 +8,18 @@ async function fetchFiles() {
 
 async function uploadFile(file) {
   const formData = new FormData();
-  formData.append("uploaded_file", file);
+  // backend expects the form field to be named 'file'
+  formData.append("file", file);
 
   const res = await fetch(`${API_BASE}/files/`, {
     method: "POST",
     headers: authHeaders(),
     body: formData,
   });
-
-  if (!res.ok) throw new Error("Upload failed");
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Upload failed");
+  }
 }
 
 async function deleteFile(id) {

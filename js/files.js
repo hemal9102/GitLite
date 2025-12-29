@@ -1,6 +1,4 @@
-const tableBody = document.getElementById("fileTableBody");
-const uploadBtn = document.getElementById("uploadBtn");
-const fileInput = document.getElementById("fileInput");
+let tableBody, uploadBtn, fileInput;
 
 // small set of mock commit-like metadata to make the UI look GitHub-ish
 const mockCommits = [
@@ -10,6 +8,7 @@ const mockCommits = [
 ];
 
 async function loadFiles() {
+  if (!tableBody) return;
   tableBody.innerHTML = "";
   const files = await fetchFiles();
 
@@ -77,15 +76,40 @@ async function handleDownload(id) {
   }
 }
 
-uploadBtn?.addEventListener("click", async () => {
-  if (!fileInput.files.length) {
-    alert("Select a file first");
+async function initFilesPage() {
+  console.log("initFilesPage called");
+
+  tableBody = document.getElementById("fileTableBody");
+  uploadBtn = document.getElementById("uploadBtn");
+  fileInput = document.getElementById("fileInput");
+
+  if (!tableBody) {
+    // page not ready or wrong template
     return;
   }
 
-  await uploadFile(fileInput.files[0]);
-  fileInput.value = "";
-  loadFiles();
-});
+  uploadBtn?.addEventListener("click", async () => {
+    if (!fileInput.files.length) {
+      console.log("upload button clicked");
+      alert("Select a file first");
+      return;
+    }
 
-loadFiles();
+    try {
+      await uploadFile(fileInput.files[0]);
+      fileInput.value = "";
+      await loadFiles();
+    } catch (err) {
+      alert("Upload failed: " + (err.message || err));
+    }
+  });
+
+  await loadFiles();
+}
+
+// initialize when DOM is ready
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initFilesPage);
+} else {
+  initFilesPage();
+}
