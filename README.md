@@ -1,94 +1,113 @@
-# GitLite
+# GitLite: Containerized Distributed Object Storage & Version Control Backend
 
 [![FastAPI](https://img.shields.io/badge/framework-FastAPI-teal.svg)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-blue.svg)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/container-Docker%20Compose-2496ED.svg)](https://www.docker.com/)
 [![Alembic](https://img.shields.io/badge/migration-Alembic-red.svg)](https://alembic.sqlalchemy.org/)
 
-A containerized distributed version-control backend and object management platform built with FastAPI, PostgreSQL, and Docker. Features automated database migrations, JWT authentication, and isolated repository workspace orchestration.
+A production-engineered, containerized version-control backend and isolated object-storage engine built with FastAPI, PostgreSQL, and Docker. Implements multi-stage database lifecycle management, cryptographic authentication, and path-sanitized workspace file operations.
 
 ---
 
-## Architecture Overview
+## Architecture & Systems Overview
 
-GitLite provides a modular microservice architecture decoupling API routing, database schema versioning, and file-tree storage:
+GitLite separates stateless REST request handling, database connection pooling, and filesystem-backed workspace isolation into decoupled container boundaries:
 
-`
-                            +-----------------------------+
-                            |         Client / UI         |
-                            +--------------+--------------+
-                                           | HTTP / REST
-                                           v
-                            +-----------------------------+
-                            |       FastAPI Gateway       |
-                            |                             |
-                            |  * OAuth2 / JWT Auth Guard  |
-                            |  * Repo & File Management   |
-                            |  * Async Pydantic Schemas   |
-                            +--------------+--------------+
-                                           |
-                    +----------------------+----------------------+
-                    |                                             |
-                    v                                             v
-     +------------------------------+             +------------------------------+
-     |     PostgreSQL Database      |             |   Object / Workspace Store   |
-     |                              |             |                              |
-     |  * Users & Org Schemas       |             |  * Repository File Trees     |
-     |  * Alembic Migration Engine  |             |  * Isolated Commit Hashes    |
-     |  * Connection Pooling        |             |  * Structured Metadata Logs  |
-     +------------------------------+             +------------------------------+
-`
+```mermaid
+flowchart TD
+    Client["Client / Web UI (HTML5, JS Fetch, CSS)"]
 
----
+    subgraph DockerBoundary["Docker Compose Isolated Network"]
+        subgraph Gateway["FastAPI Application Gateway"]
+            CORS["CORS Middleware (Configurable Origins)"]
+            AuthGuard["Security & Auth Guard (OAuth2 Bearer, bcrypt, JWT)"]
+            APIRouter["Resource Routers (Users, Repositories, Files)"]
+        end
 
-## Core Capabilities
+        subgraph StorageLayer["Data & Object Storage Tier"]
+            ORM["SQLAlchemy ORM (Connection Pool / SessionLocal)"]
+            DB[(PostgreSQL Relational DB)]
+            InitProbe["Readiness Probe (wait_for_db.py)"]
+            Migrate["Alembic Migration Engine (alembic upgrade head)"]
+            DiskStorage["Isolated Workspace File Store (storage/)"]
+        end
+    end
 
-- **Asynchronous REST API**: High-concurrency async endpoints powered by FastAPI and SQLAlchemy ORM.
-- **Relational Integrity & Schema Versioning**: Automated schema migration lifecycle managed via Alembic (lembic upgrade head), including healthcheck wait-for-db scripts.
-- **Secure Authentication Layer**: Role-based access control, cryptographic password hashing (bcrypt), and stateless JWT session tokens.
-- **Multi-Container Orchestration**: Fully reproducible Docker Compose setup establishing isolated networks between API gateways, databases, and local storage volumes.
+    Client <-->|HTTP / REST (JWT Bearer)| CORS
+    CORS --> AuthGuard
+    AuthGuard --> APIRouter
+    APIRouter -->|Structured Metadata| ORM
+    APIRouter -->|Sanitized Multipart File Streams| DiskStorage
+    ORM <--> DB
+    InitProbe -->|TCP Socket Probe :5432| DB
+    InitProbe -->|On Healthy Connection| Migrate
+    Migrate -->|Apply Schema Head| DB
+```
 
 ---
 
-## Directory Structure
+## Technical Specifications & Request Lifecycle
 
-`	ext
+### 1. Ingress, CORS & Security Pipeline
+- **Configurable Ingress**: Configurable via `ALLOW_ORIGINS` environment variables with strict origin matching.
+- **Cryptographic Security**: Password hashing powered by Passlib (`bcrypt`), stateless JWT token issuance, and dependency injection guards via `FastAPI.Depends(get_current_user)`.
+- **Admin Seeding**: Automated initialization of baseline administrative users (`ADMIN_EMAIL`, `ADMIN_PASSWORD`) upon deployment bootstrap.
+
+### 2. Database Resilience & Schema Migration
+- **TCP Readiness Probe (`wait_for_db.py`)**: Interrogates the PostgreSQL socket directly on startup, blocking backend initialization until the database is fully ready to accept connections.
+- **Alembic Versioning**: Automatic schema migrations apply declarative SQLAlchemy model updates deterministically across environments.
+- **Session Pooling**: Managed `SessionLocal` scope per request with automatic transaction rollback upon unhandled exceptions.
+
+### 3. File System & Workspace Storage Engine
+- **Path Sanitization**: Resolves file paths defensively within designated user workspaces to prevent directory traversal attacks (`../`).
+- **Multipart Upload Streams**: Handles high-throughput file uploads via `UploadFile` with chunked streaming to local persistent disk volumes.
+
+---
+
+## Directory Organization
+
+```text
 GitLite/
 ├── backend/
-│   ├── app/                 # FastAPI application core (models, schemas, routers, auth)
-│   ├── alembic/             # Database migration scripts & version tracking
-│   ├── alembic.ini          # Migration configuration
-│   ├── Dockerfile           # Optimized multi-stage backend container
-│   ├── docker-compose.yml   # Multi-service runtime configuration
-│   ├── requirements.txt     # Locked production dependencies
+│   ├── app/
+│   │   ├── main.py          # FastAPI application entry, CORS, and endpoint definitions
+│   │   ├── auth.py          # JWT generation, token verification, and OAuth2 routes
+│   │   ├── security.py      # Password hashing algorithms (bcrypt)
+│   │   ├── models.py        # SQLAlchemy relational database tables
+│   │   ├── schemas.py       # Pydantic serialization and validation schemas
+│   │   ├── crud.py          # Database queries and transaction operations
+│   │   ├── database.py      # Engine connection pooling and session makers
+│   │   └── storage/         # Local workspace and file system storage repository
+│   ├── alembic/             # Database migration version files
+│   ├── alembic.ini          # Alembic environment and connection config
+│   ├── Dockerfile           # Optimized container build specification
+│   ├── docker-compose.yml   # Multi-service networking and volume declarations
+│   ├── requirements.txt     # Python dependencies
 │   └── wait_for_db.py       # TCP connection readiness probe for PostgreSQL
-├── css/                     # UI stylesheet assets
-├── js/                      # Frontend client logic & API fetch layer
-├── index.html               # Main application portal
+├── css/                     # Client stylesheets
+├── js/                      # Frontend client logic & REST API consumers
+├── index.html               # File browser & repository management portal
 ├── login.html               # Authentication interface
-└── signup.html              # Registration portal
-`
+└── signup.html              # Registration interface
+```
 
 ---
 
-## Quickstart (Docker Compose)
+## Deployment & Quickstart
 
-### 1. Launch Services
-`ash
+```bash
+# 1. Navigate to backend directory
 cd backend
+
+# 2. Start services with Docker Compose
 docker-compose up --build -d
-`
 
-### 2. Verify Database Migrations
-The wait_for_db.py readiness probe blocks application startup until PostgreSQL reports healthy socket availability, after which Alembic executes migrations automatically:
-`ash
+# 3. Stream startup logs & migration execution
 docker-compose logs -f backend
-`
 
-### 3. API Documentation
-Once running, interactive OpenAPI/Swagger documentation is available at:
-- http://localhost:8000/docs
-- http://localhost:8000/redoc
+# 4. Access OpenAPI interactive documentation
+# Open: http://localhost:8000/docs
+```
 
 ---
 
