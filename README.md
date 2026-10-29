@@ -33,15 +33,15 @@ flowchart TD
         end
     end
 
-    Client <-->|HTTP / REST (JWT Bearer)| CORS
+    Client <-->|"HTTP / REST (JWT Bearer)"| CORS
     CORS --> AuthGuard
     AuthGuard --> APIRouter
-    APIRouter -->|Structured Metadata| ORM
-    APIRouter -->|Sanitized Multipart File Streams| DiskStorage
+    APIRouter -->|"Structured Metadata"| ORM
+    APIRouter -->|"Sanitized Multipart File Streams"| DiskStorage
     ORM <--> DB
-    InitProbe -->|TCP Socket Probe :5432| DB
-    InitProbe -->|On Healthy Connection| Migrate
-    Migrate -->|Apply Schema Head| DB
+    InitProbe -->|"TCP Socket Probe :5432"| DB
+    InitProbe -->|"On Healthy Connection"| Migrate
+    Migrate -->|"Apply Schema Head"| DB
 ```
 
 ---
